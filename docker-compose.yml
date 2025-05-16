@@ -1,0 +1,12 @@
+services:
+  job_finder_service:
+    container_name: job_finder
+    image: postgres:17.5
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      PGDATA: /data/postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped

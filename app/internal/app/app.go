@@ -1,11 +1,15 @@
 package app
 
 import (
+	"context"
 	"fmt"
-	"github.com/julienschmidt/httprouter"
-	"github.com/rs/cors"
-	httpSwagger "github.com/swaggo/http-swagger"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"job_finder_service/internal/config"
+	"job_finder_service/internal/domain/employer/service"
+	"job_finder_service/internal/domain/employer/storage"
+	"job_finder_service/internal/routes"
+	"job_finder_service/internal/routes/handlers"
+	"job_finder_service/pkg/client/postgres"
 	"log"
 	"log/slog"
 	"net"
@@ -15,18 +19,29 @@ import (
 
 type App struct {
 	cfg        *config.Config
-	router     *httprouter.Router
+	router     *routes.Router
 	httpServer *http.Server
+	pgClient   *pgxpool.Pool
 }
 
-func NewApp(cfg *config.Config) (App, error) {
+func NewApp(ctx context.Context, cfg *config.Config) (App, error) {
 
 	slog.Info("router initializing")
-	router := httprouter.New()
 
-	router.Handler(http.MethodGet, "/swagger", http.RedirectHandler("/swagger/index.html", http.StatusMovedPermanently))
-	router.Handler(http.MethodGet, "/swagger/*any", httpSwagger.WrapHandler)
-	return App{cfg: cfg, router: router}, nil
+	pgConfig := postgres.NewPostgresConfig(cfg.PostgreSQL.Username,
+		cfg.PostgreSQL.Password,
+		cfg.PostgreSQL.Host,
+		cfg.PostgreSQL.Port,
+		cfg.PostgreSQL.Database,
+	)
+
+	pgClient := postgres.NewClient(context.Background(), pgConfig, 5, 5*time.Second)
+	newStorageEmpl := storage.NewStorage(pgClient)
+	newServiceEmpl := service.NewService(newStorageEmpl)
+	handler := handlers.NewHandler(ctx, newServiceEmpl)
+	router := routes.NewRouter(handler)
+
+	return App{cfg: cfg, router: router, pgClient: pgClient}, nil
 }
 
 func (app *App) Run() {
@@ -41,13 +56,9 @@ func (app *App) StartHttpServer() {
 	if err != nil {
 		log.Fatal("error making listener: ", err)
 	}
-	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"http://localhost:3000"},
-		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete},
-	})
-	handler := c.Handler(app.router)
+
 	app.httpServer = &http.Server{
-		Handler:      handler,
+		Handler:      app.router.Router,
 		WriteTimeout: time.Second * 15,
 		ReadTimeout:  time.Second * 15,
 	}

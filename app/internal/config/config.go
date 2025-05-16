@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/joho/godotenv"
 	"log"
 	"sync"
 )
@@ -18,6 +19,13 @@ type Config struct {
 		Username string `env:"ADMIN_USERNAME" env-default:"admin"`
 		Password string `env:"ADMIN_PASSWORD" env-default:"admin"`
 	}
+	PostgreSQL struct {
+		Username string `env:"DB_USERNAME" env-required:"true"`
+		Password string `env:"DB_PASSWORD" env-required:"true"`
+		Host     string `env:"DB_HOST" env-required:"true"`
+		Port     string `env:"DB_PORT" env-required:"true"`
+		Database string `env:"DB_NAME" env-required:"true"`
+	}
 }
 
 var instance *Config
@@ -26,9 +34,14 @@ var once sync.Once
 func GetInstance() *Config {
 	once.Do(func() {
 		instance = &Config{}
+		err := godotenv.Load("./.env")
+		if err != nil {
+			log.Fatal(err)
+		}
 		if err := cleanenv.ReadEnv(instance); err != nil {
 			log.Fatal("error initializing config: ", err)
 		}
+		log.Printf("Config loaded: %+v", instance)
 
 	})
 	return instance
